@@ -1,237 +1,268 @@
-# Hangman Game (SFML, C++)
+# Hangman Game
 
-## Overview
-This project is a desktop Hangman game written in C++ using SFML for graphics, audio, text rendering, input events, and window handling.
+A polished, audio-visual Hangman experience built with C++ and SFML.
 
-Main source file:
+This project combines core gameplay logic with a clean desktop UI, contextual hints, progressive difficulty feedback, and event-driven architecture. It is designed as both a playable game and a strong portfolio-quality reference for object-oriented C++ application development.
+
+## Visual Preview
+
+### Main Menu
+
+![Main Menu](screenshots/menu-screen.png)
+
+### Gameplay Screen
+
+![Gameplay Screen](screenshots/gameplay-screen.png)
+
+### Win State
+
+![Win Screen](screenshots/win-screen.png)
+
+### Loss State
+
+![Loss Screen](screenshots/loss-screen.png)
+
+## Why This Project Stands Out
+
+- Professional desktop game flow with clear state transitions (Menu, Rules, Gameplay, End-state)
+- Real-time rendering and interaction using SFML graphics and event system
+- Strong gameplay loop with validated input, duplicate-guess protection, and result feedback
+- Rich user experience with typography, background graphics, and multi-sound feedback
+- Codebase demonstrates practical OOP, string processing, state management, and UI coordination
+
+## Live Project Scope
+
+This repository currently includes:
+
+- Core C++ source implementation
+- SFML-based graphics and audio integration
+- Project assets: fonts, images, and sound files
+- Viva preparation materials for presentation readiness
+
+Primary source:
 - Hangman-trial.cpp
 
-The game supports:
-- Random word and hint generation
-- Keyboard letter guessing
-- Correct/wrong guess handling
-- Progressive hangman drawing on wrong guesses
-- Win/loss detection
-- Score display (wins/losses)
-- Play, Rules, and Close screens
-- Sound effects and intro sound
+## Gameplay Overview
 
-## How The System Recognizes A Letter And Places It In The Correct Position
-This is the core logic used when the player types a letter.
+1. A random word and matching hint are selected.
+2. The word is hidden with underscores.
+3. The player types letter guesses.
+4. Correct letters reveal at all matching positions.
+5. Incorrect guesses build hangman parts progressively.
+6. The round ends with win/loss messaging and score update.
+7. User can replay without restarting the application.
 
-1. The game reads text input events from SFML.
-2. It accepts only valid alphabetic ASCII characters.
-3. The typed character is converted to uppercase.
-4. A letter index is computed to track repeated guesses:
+## Technical Architecture
 
-   index = uppercaseLetter - 'A'
+### Core Classes
 
-5. If the letter was already used, it is ignored.
-6. If not used, the game checks the typed letter against each position of the hidden answer string.
-7. For each matching position, the underscore in guessedString is replaced with the actual letter.
-8. The updated guessedString is rendered on screen.
+#### Game
+Shared game-level mechanics:
+- Wrong attempt tracking (tries)
+- Max-attempt policy
+- Session score counters (wins and losses)
+- Loss condition evaluation
 
-### Why this works
-- The answer is stored in correctString.
-- Player progress is stored in guessedString.
-- The guessWord(letter) function scans the full word and updates all matching positions, not just one.
-- This allows repeated letters in a word to be revealed together.
+#### Hangman
+Domain-specific mechanics:
+- Target word storage
+- Revealed-progress storage
+- Hint association
+- Letter matching and reveal logic
+- Win condition evaluation
 
-## Code Structure
+### Interaction Model
 
-### 1) LegacyRect
-Purpose:
-- A simple rectangle hit-test helper for button clicks.
+- Event-driven keyboard and mouse handling via SFML
+- Input validation pipeline for alphabetic character acceptance
+- Case normalization for consistent matching
+- Duplicate-guess guard using indexed lookup strategy
 
-Used for:
-- Play, Rules, and Close button click detection.
+## Architecture Flow Diagram
 
-### 2) Game class
-Purpose:
-- Base game state and scoring fields.
+```mermaid
+flowchart TD
+  A[Application Start] --> B[Initialize Assets]
+  B --> C[Create Window and UI Objects]
+  C --> D[Enter Main Loop]
 
-Contains:
-- tries (protected)
-- static max_tries
-- static wins
-- static losses
-- isLost() check
+  D --> E[Poll SFML Events]
+  E --> F{Event Type}
 
-Loss rule used:
-- isLost() returns true when tries > max_tries.
-- max_tries is set to 6.
+  F -->|Mouse Click| G{Button Region}
+  G -->|Play| H[Reset Round State]
+  G -->|Rules| I[Show Rules Screen]
+  G -->|Close| J[Exit Application]
 
-### 3) Hangman class (inherits Game)
-Purpose:
-- Stores and manages word-guessing state.
+  F -->|Text Input| K{Playing State?}
+  K -->|No| D
+  K -->|Yes| L[Validate Letter and Normalize Case]
+  L --> M{Already Guessed?}
+  M -->|Yes| D
+  M -->|No| N[Run guessWord on Target Word]
 
-Contains:
-- correctString: full answer word
-- guessedString: underscores + revealed letters
-- hint: current hint text
+  N --> O{Correct Guess?}
+  O -->|Yes| P[Update Revealed Word]
+  O -->|No| Q[Increase Tries and Draw Next Hangman Part]
 
-Main methods:
-- setCorrectString(word): sets answer
-- setGuessedString(): initializes guessedString to "_____"
-- guessWord(letter): reveals letter at all matching indexes
-- isWon(): true when guessedString == correctString
-- increaseTries(): increments wrong attempts
+  P --> R{Word Completed?}
+  R -->|Yes| S[Win State + Score Update]
+  R -->|No| D
 
-## Full Functionality Report
+  Q --> T{Loss Condition Met?}
+  T -->|Yes| U[Loss State + Score Update]
+  T -->|No| D
 
-### Game initialization
-- Seeds random generator with current time.
-- Defines 5 words and 5 hints.
-- Picks a random index and loads a word + hint into the Hangman object.
-- Creates the render window (900x900).
-- Loads image, fonts, and sounds.
-- Creates all text objects, shapes, and default positions.
+  S --> V[Offer Play Again]
+  U --> V
+  V --> D
 
-### Asset loading
-Assets are loaded from these folders:
-- images/
-- Fonts/
-- Audio/
+  D --> W[Render Frame]
+  W --> D
+```
 
-Current referenced files:
-- images/squared-paper.jpg
-- Fonts/GreatVibes-Regular.otf
-- Fonts/Montserrat-Light.otf
-- Audio/Wrong-answer-sound-effect.wav
-- Audio/Vip.wav
-- Audio/wrong.wav
-- Audio/correct.wav
+### What This Architecture Contains
 
-### Menu behavior
-- Play button:
-  - Resets game state
-  - Picks a new random word and hint
-  - Clears used letters
-  - Resets tries to 0
-  - Hides menu UI and starts play mode
-- Rules button:
-  - Shows rules text screen
-  - Repositions/hides gameplay UI
-- Close button:
-  - Plays sound and closes window
+- Application lifecycle: startup, initialization, and continuous render loop
+- Input channels: mouse events for menu controls and text events for letter guesses
+- Gameplay decision gates: playing state check, duplicate-guess check, correctness check
+- Core domain operations: word reveal updates, try counting, win/loss evaluation
+- UI feedback outputs: text updates, hangman progression, and replay prompt
+- End-state transitions: win/loss screens with score updates and replay path
 
-### Input handling behavior
-- Receives text input events.
-- Accepts only letters.
-- Converts to uppercase for matching uppercase words.
-- Prevents duplicate letter processing with choice[] array.
+## How Letter Position Recognition Works
 
-### Correct guess behavior
-- Plays correct sound.
-- Updates guessed text display.
-- Checks win condition:
-  - Shows win message
-  - Updates wins counter
-  - Displays scoreboard
-  - Enables Play Again state
+When a player types a character, the system performs:
 
-### Wrong guess behavior
-- Plays wrong sound.
-- Increases tries.
-- Draws hangman in stages based on tries count:
-  - Stand parts
-  - Head
-  - Body
-  - Arms
-  - Legs
-- Checks loss condition:
-  - Shows loss message with correct answer
-  - Updates losses counter
-  - Displays scoreboard
-  - Enables Play Again state
+1. Text event capture
+2. ASCII + alphabetic validation
+3. Uppercase normalization
+4. Duplicate check using index mapping:
+   - index = uppercaseLetter - 'A'
+5. Full scan of the hidden answer string
+6. Positional reveal in guessed string where matches occur
+7. Immediate UI refresh with updated guessed state
 
-### Rendering loop
-Each frame:
-1. Poll events
-2. Process close/mouse/keyboard events
-3. Clear window
-4. Draw background sprite
-5. Draw shapes and text
-6. Display frame
+This guarantees that repeated letters in a word are revealed correctly across all valid positions.
 
-## Libraries Used (Detailed: What, When, Why)
+## Feature Breakdown
+
+### Core Gameplay
+- Randomized word/hint pairing
+- Underscore-based hidden-word initialization
+- Correct/incorrect guess branching
+- Win/loss state transitions
+- Replay support
+
+### User Interface
+- Menu actions: Play, Rules, Close
+- Dynamic hint display
+- Dynamic guessed-word rendering
+- Game status messaging
+- Scoreboard rendering (wins/losses)
+
+### Visual Progression
+- Incremental hangman drawing tied to wrong-guess count
+- Shape-based rendering using SFML primitives
+
+### Audio Design
+- Intro/background cue behavior
+- Correct input sound effect
+- Wrong input sound effect
+- Exit/transition audio feedback
+
+## Technology Stack
+
+- Language: C++
+- Framework: SFML (Graphics + Audio)
+- Runtime Style: Event-driven desktop application
+
+## Libraries and Their Role
 
 ### iostream
-Why used:
-- Console output for debugging and status logs.
-
-Used when:
-- Button presses
-- Typed character debugging
-- Win/loss value printing
+Used for debug output and runtime trace messaging.
 
 ### string
-Why used:
-- Word storage, hint storage, message creation, and string replacement.
-
-Used when:
-- Managing correctString and guessedString
-- Building UI text strings
-- Updating guessed word state
+Used for target word storage, hint text management, and dynamic reveal transformations.
 
 ### SFML/Graphics.hpp
-Why used:
-- All graphics and window APIs.
-
 Used for:
-- sf::RenderWindow (window creation and display)
-- sf::Texture and sf::Sprite (background)
-- sf::Font and sf::Text (title, menu, hints, score)
-- sf::CircleShape and sf::RectangleShape (hangman body/stand)
-- sf::Event system (mouse and text input)
+- Window creation and frame lifecycle
+- Text rendering
+- Sprite/texture background rendering
+- Shape rendering for hangman components
+- Event handling integration
 
 ### SFML/Audio.hpp
-Why used:
-- Sound effects and intro playback.
-
 Used for:
-- sf::SoundBuffer (loading sound data)
-- sf::Sound (play, pause)
+- Audio file buffering
+- Sound playback and transition cues
 
-### stdlib.h
-Why used:
-- rand(), srand(), EXIT_FAILURE.
-
-Used when:
-- Random word selection
-- Program exit on asset load failure
-
-### ctime and time.h
-Why used:
-- time(0) for random seed.
-
-Note:
-- Both headers are included, but one is generally enough.
+### stdlib.h, ctime, time.h
+Used for pseudo-random round initialization.
 
 ### cctype
-Why used:
-- Character validation and case conversion.
+Used for robust character validation and normalization.
 
-Used for:
-- isalpha(...) to allow letters only
-- toupper(...) to normalize typed input
+## Open-Source Readiness
 
-## Important Implementation Notes
-- Words are currently uppercase, and input is normalized to uppercase, so matching remains consistent.
-- Font load results are not checked in the current code; if a font is missing, text may not render properly.
-- Hint display uses fixed substring splits, which assumes hints are long enough.
+This project is prepared to be understood and extended by contributors. The codebase is structured around clear gameplay behavior and visible UI outcomes, making onboarding straightforward for students, beginners, and intermediate developers.
 
-## How To Run
-1. Install SFML compatible with your compiler.
-2. Build Hangman-trial.cpp.
-3. Ensure Audio, Fonts, and images folders stay next to the executable.
-4. Run the executable.
+### Recommended Contribution Areas
+
+- Refactor state management into explicit finite-state enums
+- Improve text wrapping for variable hint lengths
+- Add external dictionary file support for larger word sets
+- Introduce unit tests for core Hangman logic
+- Add cross-platform build instructions via CMake
+- Add difficulty levels and category-based word packs
+
+## Build and Run
+
+### Prerequisites
+
+- C++ compiler with modern C++ support
+- SFML installed and linked (matching your compiler/toolchain)
+
+### Steps
+
+1. Compile Hangman-trial.cpp with SFML Graphics and Audio modules.
+2. Ensure these folders are available beside the executable:
+   - Audio/
+   - Fonts/
+   - images/
+3. Launch executable.
 
 ## Controls
-- Mouse:
-  - Click Play, Rules, Close
-- Keyboard:
-  - Type letter keys A-Z to guess
 
-## Summary
-The project is a complete GUI Hangman implementation using object-oriented C++ plus SFML. The typed-letter placement works by scanning every character index in the answer word and replacing matching underscore positions in guessedString, then re-rendering the updated text on screen.
+- Mouse:
+  - Play
+  - Rules
+  - Close
+- Keyboard:
+  - Letter keys A-Z for guessing
+
+## Project Assets
+
+- Background textures in images/
+- Sound effects and music in Audio/
+- Typography assets in Fonts/
+
+## Quality Notes
+
+- Input is validated to reduce accidental invalid interactions.
+- Duplicate guesses are guarded to preserve fair gameplay flow.
+- Word and hint pair remain synchronized through shared random index selection.
+- Gameplay remains responsive through continuous event polling and frame rendering.
+
+## Roadmap
+
+- Add CMake build support
+- Add CI pipeline for build verification
+- Add modular game-state controller
+- Add optional keyboard shortcuts for menu navigation
+- Add richer result analytics per session
+
+## Acknowledgment
+
+Built as a focused C++ + SFML project demonstrating practical game-loop engineering, object-oriented design, and user-facing interaction quality in a desktop environment.
