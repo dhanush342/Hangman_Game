@@ -2,14 +2,17 @@
 #include <string>
 #include <SFML/Graphics.hpp>
 #include <SFML/Audio.hpp>
-#include <stdlib.h>
-#include <ctime>
-#include <time.h>
+#include <array>
+#include <vector>
+#include <unordered_set>
+#include <random>
 #include <cctype>
+#include <stdexcept>
+#include <cstdlib>
 
 #define setPosition(x, y) setPosition(sf::Vector2f(static_cast<float>(x), static_cast<float>(y)))
-#define setRotation(a) setRotation(sf::degrees(static_cast<float>(a)))
-#define VideoMode(w, h) VideoMode(sf::Vector2u(static_cast<unsigned int>(w), static_cast<unsigned int>(h)))
+#define setRotation(a) setRotation(static_cast<float>(a))
+#define VideoMode(w, h) VideoMode(static_cast<unsigned int>(w), static_cast<unsigned int>(h))
 
 using namespace std;
 
@@ -23,6 +26,50 @@ struct LegacyRect {
 		return x >= left && x <= (left + width) && y >= top && y <= (top + height);
 	}
 };
+
+struct WordEntry {
+	string word;
+	string hint;
+};
+
+const vector<WordEntry> dictionary = {
+	{"PRIVACY", "keeping yourself and your personal information data safe when off and online"},
+	{"INTEGER", "a data type in programming languages, representing a whole number positive or negative"},
+	{"TERNARY", "numbers expressed in the base of three, instead of 10, using 0, 1 and 2 only"},
+	{"SOFTWARE", "It is a collection of data or computer instructions that tell the computer how to work"},
+	{"COMPILER", "It is a program that translates source code into object code"}
+};
+
+template <typename Str, typename CharT>
+bool revealLetters(Str& guessed, const Str& correct, CharT letter) {
+	bool found = false;
+	for (size_t i = 0; i < correct.size(); ++i) {
+		if (correct[i] == letter) {
+			guessed[i] = correct[i];
+			found = true;
+		}
+	}
+	return found;
+}
+
+template <typename Resource, typename Loader>
+void loadResourceOrThrow(Resource& resource, const string& path, Loader loader) {
+	if (!loader(resource, path)) {
+		throw runtime_error("Failed to load resource: " + path);
+	}
+}
+
+const WordEntry& chooseRandomWord(mt19937& rng) {
+	uniform_int_distribution<size_t> dist(0, dictionary.size() - 1);
+	return dictionary[dist(rng)];
+}
+
+string buildHintText(const string& hint, size_t firstLineLength = 58) {
+	if (hint.size() <= firstLineLength) {
+		return "Hint: " + hint;
+	}
+	return "Hint: " + hint.substr(0, firstLineLength) + "\n" + hint.substr(firstLineLength);
+}
 
 class Game {
 protected:
@@ -73,10 +120,7 @@ public:
 		return guessedString;
 	}
 	void setGuessedString() {
-		guessedString = "";
-		for (int i = 0; i < correctString.length(); i++) {
-			guessedString = guessedString + "_";
-		}
+		guessedString.assign(correctString.size(), '_');
 	}
 	void setGuessedString(string word) {
 		guessedString = word;
@@ -91,329 +135,299 @@ public:
 		}
 	}
 	bool guessWord(char letter) {
-		bool correctness = false;
-		for (int i = 0; i < correctString.length(); i++) {
-			if (letter == correctString[i]) {
-				int sizeOfString = correctString.length();
-				guessedString = guessedString.substr(0, i) + correctString.substr(i, 1) + guessedString.substr(i + 1, sizeOfString - (i + 1));
-				correctness = true;
-			}
-		}
-		return correctness;
+		return revealLetters(guessedString, correctString, letter);
 	}
 };
+
 int main()
 {
-	srand(time(0));
-	string words[] = { "PRIVACY","INTEGER","TERNARY","SOFTWARE","COMPILER" };
-	string hints[] = { "keeping yourself and your personal information data safe when off and online","a data type in programming languages, representing a whole number positive or negative","numbers expressed in the base of three, instead of 10, using 0, 1 and 2 only","It is a collection of data or computer instructions that tell the computer how to work","It is a program that translates source code into object code" };
-	Hangman hg;
-	int c = (rand() % 5);
-	hg.hint = hints[c];
-	hg.setCorrectString(words[c]);
-	hg.setGuessedString();
+	try {
+		mt19937 rng(random_device{}());
+		Hangman hg;
+		const WordEntry& entry = chooseRandomWord(rng);
+		hg.hint = entry.hint;
+		hg.setCorrectString(entry.word);
+		hg.setGuessedString();
 
-	bool playing = false;
+		bool playing = false;
+		unordered_set<char> usedLetters;
 
-	int positions[20][2];
-	bool choice[40];
-	for (int i = 0; i < 40; i++) {
-		choice[i] = false;
-	}
-	sf::RenderWindow window(sf::VideoMode(900, 900), "HANGMAN!");
+		array<sf::Vector2f, 14> positions = {
+			sf::Vector2f(437.f, 270.f),
+			sf::Vector2f(427.f, 295.f),
+			sf::Vector2f(450.f, 297.f),
+			sf::Vector2f(427.f, 365.f),
+			sf::Vector2f(450.f, 367.f),
+			sf::Vector2f(300.f, 340.f),
+			sf::Vector2f(300.f, 210.f),
+			sf::Vector2f(305.f, 278.f),
+			sf::Vector2f(410.f, 200.f),
+			sf::Vector2f(370.f, 500.f),
+			sf::Vector2f(370.f, 600.f),
+			sf::Vector2f(370.f, 700.f),
+			sf::Vector2f(220.f, 700.f),
+			sf::Vector2f(150.f, 600.f)
+		};
 
-	sf::Texture texture;
-	if (!texture.loadFromFile("images\\squared-paper.jpg"))
-		return EXIT_FAILURE;
-	sf::Sprite sprite(texture);
+		sf::RenderWindow window(sf::VideoMode(900, 900), "HANGMAN!");
 
-	sf::Font font;
-	font.openFromFile("Fonts\\GreatVibes-Regular.otf");
+		sf::Texture texture;
+		loadResourceOrThrow(texture, "images\\squared-paper.jpg", [](sf::Texture& t, const string& p) { return t.loadFromFile(p); });
+		sf::Sprite sprite(texture);
 
-	sf::Font font1;
-	font1.openFromFile("Fonts\\Montserrat-Light.otf");
+		sf::Font font;
+		loadResourceOrThrow(font, "Fonts\\GreatVibes-Regular.otf", [](sf::Font& f, const string& p) { return f.loadFromFile(p); });
 
-	sf::SoundBuffer buffer;
-	buffer.loadFromFile("Audio\\Wrong-answer-sound-effect.wav");
-	sf::Sound sound(buffer);
+		sf::Font font1;
+		loadResourceOrThrow(font1, "Fonts\\Montserrat-Light.otf", [](sf::Font& f, const string& p) { return f.loadFromFile(p); });
 
-	sf::SoundBuffer buffer1;
-	if (!buffer1.loadFromFile("Audio\\Vip.wav"))
-		return -1;
-	sf::Sound soundintro(buffer1);
+		sf::SoundBuffer buffer;
+		loadResourceOrThrow(buffer, "Audio\\Wrong-answer-sound-effect.wav", [](sf::SoundBuffer& b, const string& p) { return b.loadFromFile(p); });
+		sf::Sound sound(buffer);
 
-	sf::SoundBuffer buffer2;
-	if (!buffer2.loadFromFile("Audio\\wrong.wav"))
-		return -1;
-	sf::Sound soundwrong(buffer2);
+		sf::SoundBuffer buffer1;
+		loadResourceOrThrow(buffer1, "Audio\\Vip.wav", [](sf::SoundBuffer& b, const string& p) { return b.loadFromFile(p); });
+		sf::Sound soundintro(buffer1);
 
-	sf::SoundBuffer buffer3;
-	if (!buffer3.loadFromFile("Audio\\correct.wav"))
-		return -1;
-	sf::Sound soundcorrect(buffer3);
+		sf::SoundBuffer buffer2;
+		loadResourceOrThrow(buffer2, "Audio\\wrong.wav", [](sf::SoundBuffer& b, const string& p) { return b.loadFromFile(p); });
+		sf::Sound soundwrong(buffer2);
 
+		sf::SoundBuffer buffer3;
+		loadResourceOrThrow(buffer3, "Audio\\correct.wav", [](sf::SoundBuffer& b, const string& p) { return b.loadFromFile(p); });
+		sf::Sound soundcorrect(buffer3);
 
+		// Create text
+		sf::Text text("Hangman", font);
+		text.setCharacterSize(120);
+		text.setStyle(sf::Text::Bold);
+		text.setFillColor(sf::Color::Red);
+		text.setPosition(200, 0);
 
-	// Create a text
-	sf::Text text(font, "Hangman");
-	text.setCharacterSize(120);
-	text.setStyle(sf::Text::Bold);
-	text.setFillColor(sf::Color::Red);
-	text.setPosition(200, 0);
+		sf::Text text1("Play", font);
+		text1.setCharacterSize(60);
+		text1.setStyle(sf::Text::Underlined);
+		text1.setStyle(sf::Text::Bold);
+		text1.setFillColor(sf::Color::Red);
+		LegacyRect r1{ 370, 500, 120, 60 };
+		text1.setPosition(370, 500);
 
-	sf::Text text1(font, "Play");
-	text1.setCharacterSize(60);
-	text1.setStyle(sf::Text::Underlined);
-	text1.setStyle(sf::Text::Bold);
-	text1.setFillColor(sf::Color::Red);
-	LegacyRect r1{ 370, 500, 120, 60 };
-	text1.setPosition(370, 500);
+		sf::Text text2("Rules", font);
+		text2.setCharacterSize(60);
+		text2.setStyle(sf::Text::Underlined);
+		text2.setStyle(sf::Text::Bold);
+		text2.setFillColor(sf::Color::Red);
+		LegacyRect r2{ 370, 600, 140, 60 };
+		text2.setPosition(370, 600);
 
-	sf::Text text2(font, "Rules");
-	text2.setCharacterSize(60);
-	text2.setStyle(sf::Text::Underlined);
-	text2.setStyle(sf::Text::Bold);
-	text2.setFillColor(sf::Color::Red);
-	LegacyRect r2{ 370, 600, 140, 60 };
-	text2.setPosition(370, 600);
+		sf::Text text3("Close", font);
+		text3.setCharacterSize(60);
+		text3.setStyle(sf::Text::Underlined);
+		text3.setStyle(sf::Text::Bold);
+		text3.setFillColor(sf::Color::Red);
+		LegacyRect r3{ 370, 700, 120, 60 };
+		text3.setPosition(370, 700);
 
-	sf::Text text3(font, "Close");
-	text3.setCharacterSize(60);
-	text3.setStyle(sf::Text::Underlined);
-	text3.setStyle(sf::Text::Bold);
-	text3.setFillColor(sf::Color::Red);
-	LegacyRect r3{ 370, 700, 120, 60 };
-	text3.setPosition(370, 700);
+		sf::Text text4(hg.getGuessedString(), font1);
+		text4.setCharacterSize(80);
+		text4.setStyle(sf::Text::Underlined);
+		text4.setStyle(sf::Text::Bold);
+		text4.setFillColor(sf::Color::Red);
+		text4.setPosition(1000, 0);
 
-	sf::Text text4(font1, hg.getGuessedString());
-	text4.setCharacterSize(80);
-	text4.setStyle(sf::Text::Underlined);
-	text4.setStyle(sf::Text::Bold);
-	text4.setFillColor(sf::Color::Red);
-	text4.setPosition(1000, 00);
+		sf::Text text5("Guess the word", font1);
+		text5.setCharacterSize(60);
+		text5.setStyle(sf::Text::Underlined);
+		text5.setStyle(sf::Text::Bold);
+		text5.setFillColor(sf::Color::Red);
+		text5.setPosition(1000, 0);
 
-	sf::Text text5(font1, "Guess the word");
-	text5.setCharacterSize(60);
-	text5.setStyle(sf::Text::Underlined);
-	text5.setStyle(sf::Text::Bold);
-	text5.setFillColor(sf::Color::Red);
-	text5.setPosition(1000, 00);
+		sf::Text text6("Rules", font);
+		text6.setCharacterSize(120);
+		text6.setStyle(sf::Text::Underlined);
+		text6.setStyle(sf::Text::Bold);
+		text6.setFillColor(sf::Color::Red);
+		text6.setPosition(1000, 0);
 
-	sf::Text text6(font, "Rules");
-	text6.setCharacterSize(120);
-	text6.setStyle(sf::Text::Underlined);
-	text6.setStyle(sf::Text::Bold);
-	text6.setFillColor(sf::Color::Red);
-	text6.setPosition(1000, 00);
+		string s = "Hints will be displayed for the word. Press the letter\n to complete the word to be guessed. If the letter\n you typed is right than it will appear in the string\n of word else the hangman will start to build . \nDifferent sounds of right and wrong typed letters will\n be played . If  the user guessed it right than he/she\n will win and loose if all the body parts of hangman\n are displayed and game continues till the word\n is guessed fully . Quit the game by clicking close\n button.";
 
-	string s = "Hints will be displayed for the word. Press the letter\n to complete the word to be guessed. If the letter\n you typed is right than it will appear in the string\n of word else the hangman will start to build . \nDifferent sounds of right and wrong typed letters will\n be played . If  the user guessed it right than he/she\n will win and loose if all the body parts of hangman\n are displayed and game continues till the word\n is guessed fully . Quit the game by clicking close\n button.";
+		sf::Text text7(s, font1);
+		text7.setCharacterSize(30);
+		text7.setStyle(sf::Text::Underlined);
+		text7.setStyle(sf::Text::Bold);
+		text7.setFillColor(sf::Color::Red);
+		text7.setPosition(1000, 0);
 
-	sf::Text text7(font1, s);
-	text7.setCharacterSize(30);
-	text7.setStyle(sf::Text::Underlined);
-	text7.setStyle(sf::Text::Bold);
-	text7.setFillColor(sf::Color::Red);
-	text7.setPosition(1000, 00);
+		sf::Text text8(buildHintText(hg.hint), font1);
+		text8.setCharacterSize(22);
+		text8.setStyle(sf::Text::Underlined);
+		text8.setStyle(sf::Text::Bold);
+		text8.setFillColor(sf::Color::Red);
+		text8.setPosition(1000, 0);
 
-	sf::Text text8(font1, "Hint: " + hg.hint.substr(0, 58) + "\n" + hg.hint.substr(58, 58));
-	text8.setCharacterSize(22);
-	text8.setStyle(sf::Text::Underlined);
-	text8.setStyle(sf::Text::Bold);
-	text8.setFillColor(sf::Color::Red);
-	text8.setPosition(1000, 00);
+		sf::Text text9("Wins: " + to_string(hg.wins) + "\nLosses: " + to_string(hg.losses), font1);
+		text9.setCharacterSize(70);
+		text9.setStyle(sf::Text::Underlined);
+		text9.setStyle(sf::Text::Bold);
+		text9.setFillColor(sf::Color::Green);
+		text9.setPosition(1000, 0);
 
-	sf::Text text9(font1, "Wins: " + to_string(hg.wins) + "\nLosses: " + to_string(hg.losses));
-	text9.setCharacterSize(70);
-	text9.setStyle(sf::Text::Underlined);
-	text9.setStyle(sf::Text::Bold);
-	text9.setFillColor(sf::Color::Green);
-	text9.setPosition(1000, 00);
+		sf::CircleShape circle(30);
+		circle.setTexture(&texture);
+		circle.setOutlineColor(sf::Color::Black);
+		circle.setOutlineThickness(5);
+		circle.setPosition(410, 200);
 
-	sf::CircleShape circle(30);
-	circle.setTexture(&texture);
-	circle.setOutlineColor(sf::Color::Black);
-	circle.setOutlineThickness(5);
-	circle.setPosition(410, 200);
+		array<sf::RectangleShape, 8> rectangle;
+		rectangle[0].setSize(sf::Vector2f(5, 100));
+		rectangle[0].setTexture(&texture);
+		rectangle[0].setOutlineColor(sf::Color::Black);
+		rectangle[0].setOutlineThickness(5);
+		rectangle[0].setPosition(437, 270);
 
-	sf::RectangleShape rectangle[20];
-	rectangle[0].setSize(sf::Vector2f(5, 100));
-	rectangle[0].setTexture(&texture);
-	rectangle[0].setOutlineColor(sf::Color::Black);
-	rectangle[0].setOutlineThickness(5);
-	rectangle[0].setPosition(437, 270);//437,270
+		rectangle[1].setSize(sf::Vector2f(5, 50));
+		rectangle[1].setTexture(&texture);
+		rectangle[1].setRotation(45);
+		rectangle[1].setOutlineColor(sf::Color::Black);
+		rectangle[1].setOutlineThickness(5);
+		rectangle[1].setPosition(427, 295);
 
-	rectangle[1].setSize(sf::Vector2f(5, 50));
-	rectangle[1].setTexture(&texture);
-	rectangle[1].setRotation(45);
-	rectangle[1].setOutlineColor(sf::Color::Black);
-	rectangle[1].setOutlineThickness(5);
-	rectangle[1].setPosition(427, 295);//427,295
+		rectangle[2].setSize(sf::Vector2f(5, 50));
+		rectangle[2].setTexture(&texture);
+		rectangle[2].setPosition(427, 295);
+		rectangle[2].setRotation(315);
+		rectangle[2].setOutlineColor(sf::Color::Black);
+		rectangle[2].setOutlineThickness(5);
+		rectangle[2].setPosition(450, 297);
 
-	rectangle[2].setSize(sf::Vector2f(5, 50));
-	rectangle[2].setTexture(&texture);
-	rectangle[2].setPosition(427, 295);
-	rectangle[2].setRotation(315);
-	rectangle[2].setOutlineColor(sf::Color::Black);
-	rectangle[2].setOutlineThickness(5);
-	rectangle[2].setPosition(450, 297);//450,297
+		rectangle[3].setSize(sf::Vector2f(5, 75));
+		rectangle[3].setTexture(&texture);
+		rectangle[3].setRotation(15);
+		rectangle[3].setOutlineColor(sf::Color::Black);
+		rectangle[3].setOutlineThickness(5);
+		rectangle[3].setPosition(427, 365);
 
-	rectangle[3].setSize(sf::Vector2f(5, 75));
-	rectangle[3].setTexture(&texture);
-	rectangle[3].setRotation(15);
-	rectangle[3].setOutlineColor(sf::Color::Black);
-	rectangle[3].setOutlineThickness(5);
-	rectangle[3].setPosition(427, 365);//427,365
+		rectangle[4].setSize(sf::Vector2f(5, 75));
+		rectangle[4].setTexture(&texture);
+		rectangle[4].setRotation(345);
+		rectangle[4].setOutlineColor(sf::Color::Black);
+		rectangle[4].setOutlineThickness(5);
+		rectangle[4].setPosition(450, 367);
 
-	rectangle[4].setSize(sf::Vector2f(5, 75));
-	rectangle[4].setTexture(&texture);
-	rectangle[4].setRotation(345);
-	rectangle[4].setOutlineColor(sf::Color::Black);
-	rectangle[4].setOutlineThickness(5);
-	rectangle[4].setPosition(450, 367);//450,367
+		rectangle[5].setSize(sf::Vector2f(5, 125));
+		rectangle[5].setTexture(&texture);
+		rectangle[5].setOutlineColor(sf::Color::Black);
+		rectangle[5].setOutlineThickness(5);
+		rectangle[5].setPosition(300, 340);
 
-	rectangle[5].setSize(sf::Vector2f(5, 125));
-	rectangle[5].setTexture(&texture);
-	rectangle[5].setOutlineColor(sf::Color::Black);
-	rectangle[5].setOutlineThickness(5);
-	rectangle[5].setPosition(300, 340);//300,340
+		rectangle[6].setSize(sf::Vector2f(5, 125));
+		rectangle[6].setTexture(&texture);
+		rectangle[6].setOutlineColor(sf::Color::Black);
+		rectangle[6].setOutlineThickness(5);
+		rectangle[6].setPosition(300, 210);
 
-	rectangle[6].setSize(sf::Vector2f(5, 125));
-	rectangle[6].setTexture(&texture);
-	rectangle[6].setOutlineColor(sf::Color::Black);
-	rectangle[6].setOutlineThickness(5);
-	rectangle[6].setPosition(300, 210);//300,210
+		rectangle[7].setSize(sf::Vector2f(5, 125));
+		rectangle[7].setTexture(&texture);
+		rectangle[7].setRotation(270);
+		rectangle[7].setOutlineColor(sf::Color::Black);
+		rectangle[7].setOutlineThickness(5);
+		rectangle[7].setPosition(305, 278);
 
-	rectangle[7].setSize(sf::Vector2f(5, 125));
-	rectangle[7].setTexture(&texture);
-	rectangle[7].setRotation(270);
-	rectangle[7].setOutlineColor(sf::Color::Black);
-	rectangle[7].setOutlineThickness(5);
-	rectangle[7].setPosition(305, 278);//300,277
-
-	positions[0][0] = 437; positions[0][1] = 270;
-	positions[1][0] = 427; positions[1][1] = 295;
-	positions[2][0] = 450; positions[2][1] = 297;
-	positions[3][0] = 427; positions[3][1] = 365;
-	positions[4][0] = 450; positions[4][1] = 367;
-	positions[5][0] = 300; positions[5][1] = 340;
-	positions[6][0] = 300; positions[6][1] = 210;
-	positions[7][0] = 305; positions[7][1] = 278;
-	positions[8][0] = 410; positions[8][1] = 200;
-	positions[9][0] = 370; positions[9][1] = 500;
-	positions[10][0] = 370; positions[10][1] = 600;
-	positions[11][0] = 370; positions[11][1] = 700;
-	positions[12][0] = 220; positions[12][1] = 700;
-	positions[13][0] = 150; positions[13][1] = 600;
-
-	soundintro.play();
-
-
-	while (window.isOpen())
-	{
-
-		while (const std::optional<sf::Event> event = window.pollEvent())
-		{
-
-			if (event->is<sf::Event::Closed>())
-			{
-				window.close();
+		auto hideHangman = [&]() {
+			for (auto& part : rectangle) {
+				part.setPosition(1000, 0);
 			}
+			circle.setPosition(1000, 0);
+		};
 
-			if (const auto* mouseButton = event->getIf<sf::Event::MouseButtonPressed>()) {
-				if (r1.contains(mouseButton->position.x, mouseButton->position.y)) {
-					std::cout << "Play Button pressed\n";
-					c = (rand() % 5);
-					hg.hint = hints[c];
-					hg.setCorrectString(words[c]);
-					hg.setGuessedString();
-					hg.setTries(0);
-					text8.setString("Hint: " + hg.hint.substr(0, 58) + "\n" + hg.hint.substr(58, 58));
-					text4.setString(hg.getGuessedString());
+		auto startNewRound = [&]() {
+			const WordEntry& newEntry = chooseRandomWord(rng);
+			hg.hint = newEntry.hint;
+			hg.setCorrectString(newEntry.word);
+			hg.setGuessedString();
+			hg.setTries(0);
+			usedLetters.clear();
+			text8.setString(buildHintText(hg.hint));
+			text4.setString(hg.getGuessedString());
+			hideHangman();
+			text1.setPosition(1000, 0);
+			r1.left = 1000;
+			text2.setPosition(1000, 0);
+			r2.left = 1000;
+			text3.setPosition(1000, 0);
+			r3.left = 1000;
+			text9.setPosition(1000, 0);
+			text4.setCharacterSize(80);
+			text5.setString("Guess the Word!");
+			text6.setPosition(1000, 0);
+			text7.setPosition(1000, 0);
+			text4.setPosition(positions[12].x, positions[12].y);
+			text5.setPosition(positions[13].x, positions[13].y);
+			text8.setPosition(50, 500);
+			soundintro.pause();
+			soundcorrect.play();
+			playing = true;
+		};
 
-					for (int i = 0; i < 40; i++) {
-						choice[i] = false;
-					}
-					rectangle[0].setPosition(1000, 0);
-					rectangle[1].setPosition(1000, 0);
-					rectangle[2].setPosition(1000, 0);
-					rectangle[3].setPosition(1000, 0);
-					rectangle[4].setPosition(1000, 0);
-					rectangle[5].setPosition(1000, 0);
-					rectangle[6].setPosition(1000, 0);
-					rectangle[7].setPosition(1000, 0);
-					circle.setPosition(1000, 0);
-					text1.setPosition(1000, 0);
-					r1.left = 1000;
-					text2.setPosition(1000, 0);
-					r2.left = 1000;
-					text3.setPosition(1000, 0);
-					r3.left = 1000;
-					text9.setPosition(1000, 0);
-					text4.setCharacterSize(80);
-					text5.setString("Guess the Word!");
-					text6.setPosition(1000, 0);
-					text7.setPosition(1000, 0);
-					text4.setPosition(positions[12][0], positions[12][1]);
-					text5.setPosition(positions[13][0], positions[13][1]);
-					text8.setPosition(50, 500);
-					soundintro.pause();
-					soundcorrect.play();
-					playing = true;
+		soundintro.play();
 
-				}
-				if (r2.contains(mouseButton->position.x, mouseButton->position.y)) {
-					std::cout << "Rules Button pressed\n";
-					rectangle[0].setPosition(1000, 0);
-					rectangle[1].setPosition(1000, 0);
-					rectangle[2].setPosition(1000, 0);
-					rectangle[3].setPosition(1000, 0);
-					rectangle[4].setPosition(1000, 0);
-					rectangle[5].setPosition(1000, 0);
-					rectangle[6].setPosition(1000, 0);
-					rectangle[7].setPosition(1000, 0);
-					circle.setPosition(1000, 0);
-					text2.setPosition(1000, 0);
-					r2.left = 1000;
-					text3.setPosition(1000, 0);
-					r3.left = 1000;
-					text6.setPosition(310, 150);
-					text7.setPosition(50, 300);
-					text1.setPosition(370, 650);
-					r1.top = 650;
-					soundcorrect.play();
-
-				}
-				if (r3.contains(mouseButton->position.x, mouseButton->position.y)) {
-					std::cout << "Exit Button pressed\n";
-					sound.play();
+		while (window.isOpen())
+		{
+			sf::Event event;
+			while (window.pollEvent(event))
+			{
+				if (event.type == sf::Event::Closed)
+				{
 					window.close();
 				}
 
-			}
-			if (const auto* textEntered = event->getIf<sf::Event::TextEntered>())
-			{
-				if (playing) {
-					if (textEntered->unicode < 128)
-						if (isalpha(static_cast<unsigned char>(textEntered->unicode))) {
-							const char typedCharacter = static_cast<char>(textEntered->unicode);
-							const char upperCharacter = static_cast<char>(toupper(static_cast<unsigned char>(typedCharacter)));
-							const int letterIndex = upperCharacter - 'A';
+				if (event.type == sf::Event::MouseButtonPressed) {
+					if (r1.contains(event.mouseButton.x, event.mouseButton.y)) {
+						cout << "Play Button pressed\n";
+						startNewRound();
+					}
+					if (r2.contains(event.mouseButton.x, event.mouseButton.y)) {
+						cout << "Rules Button pressed\n";
+						hideHangman();
+						text2.setPosition(1000, 0);
+						r2.left = 1000;
+						text3.setPosition(1000, 0);
+						r3.left = 1000;
+						text6.setPosition(310, 150);
+						text7.setPosition(50, 300);
+						text1.setPosition(370, 650);
+						r1.top = 650;
+						soundcorrect.play();
+					}
+					if (r3.contains(event.mouseButton.x, event.mouseButton.y)) {
+						cout << "Exit Button pressed\n";
+						sound.play();
+						window.close();
+					}
+				}
 
-							std::cout << "ASCII character typed: " << typedCharacter << std::endl;
-							std::cout << "ASCII character typed: " << static_cast<unsigned int>(textEntered->unicode) << std::endl;
-							if (choice[letterIndex] == true) {
-								std::cout << "Already guessed\n";
+				if (event.type == sf::Event::TextEntered)
+				{
+					if (playing && event.text.unicode < 128) {
+						if (isalpha(static_cast<unsigned char>(event.text.unicode))) {
+							const char typedCharacter = static_cast<char>(event.text.unicode);
+							const char upperCharacter = static_cast<char>(toupper(static_cast<unsigned char>(typedCharacter)));
+
+							cout << "ASCII character typed: " << typedCharacter << endl;
+							cout << "ASCII character typed: " << static_cast<unsigned int>(event.text.unicode) << endl;
+
+							if (!usedLetters.insert(upperCharacter).second) {
+								cout << "Already guessed\n";
 							}
 							else {
-								choice[letterIndex] = true;
 								if (hg.guessWord(upperCharacter)) {
-									std::cout << "Correct Choice\n";
+									cout << "Correct Choice\n";
 									soundcorrect.play();
 									text4.setString(hg.getGuessedString());
 									if (hg.isWon()) {
 										text5.setString("You Won!!!!");
 										text4.setCharacterSize(50);
-										text4.setPosition(120, positions[12][1]);
+										text4.setPosition(120, positions[12].y);
 										text4.setString("You guessed \"" + hg.getCorrectString() + "\"");
 										soundintro.play();
 										playing = false;
@@ -430,35 +444,36 @@ int main()
 								}
 								else {
 									soundwrong.play();
-									std::cout << "Wrong choice\n";
+									cout << "Wrong choice\n";
 									hg.increaseTries();
+
 									if (hg.getTries() == 1) {
-										rectangle[5].setPosition(positions[5][0], positions[5][1]);
+										rectangle[5].setPosition(positions[5].x, positions[5].y);
 									}
 									if (hg.getTries() == 2) {
-										rectangle[6].setPosition(positions[6][0], positions[6][1]);
+										rectangle[6].setPosition(positions[6].x, positions[6].y);
 									}
 									if (hg.getTries() == 3) {
-										rectangle[7].setPosition(positions[7][0], positions[7][1]);
+										rectangle[7].setPosition(positions[7].x, positions[7].y);
 									}
 									if (hg.getTries() == 4) {
-										circle.setPosition(positions[8][0], positions[8][1]);
+										circle.setPosition(positions[8].x, positions[8].y);
 									}
 									if (hg.getTries() == 5) {
-										rectangle[0].setPosition(positions[0][0], positions[0][1]);
+										rectangle[0].setPosition(positions[0].x, positions[0].y);
 									}
 									if (hg.getTries() == 6) {
-										rectangle[1].setPosition(positions[1][0], positions[1][1]);
-										rectangle[2].setPosition(positions[2][0], positions[2][1]);
+										rectangle[1].setPosition(positions[1].x, positions[1].y);
+										rectangle[2].setPosition(positions[2].x, positions[2].y);
 									}
 									if (hg.getTries() == 7) {
-										rectangle[3].setPosition(positions[3][0], positions[3][1]);
-										rectangle[4].setPosition(positions[4][0], positions[4][1]);
+										rectangle[3].setPosition(positions[3].x, positions[3].y);
+										rectangle[4].setPosition(positions[4].x, positions[4].y);
 									}
 									if (hg.isLost()) {
 										text5.setString("You Lost!!!!");
 										text4.setCharacterSize(50);
-										text4.setPosition(120, positions[12][1]);
+										text4.setPosition(120, positions[12].y);
 										text4.setString("You didnt guess \"" + hg.getCorrectString() + "\"");
 										playing = false;
 										text1.setString("Play Again!");
@@ -471,46 +486,39 @@ int main()
 										cout << "Wins=" << hg.wins << endl;
 										text9.setString("Wins: " + to_string(hg.wins) + "\nLosses: " + to_string(hg.losses));
 										text9.setPosition(550, 200);
-
 									}
-
-
 								}
 							}
 						}
+					}
 				}
 			}
 
+			window.clear();
+			window.draw(sprite);
+			window.draw(circle);
+			window.draw(text);
+			window.draw(text1);
+			window.draw(text2);
+			window.draw(text3);
+			window.draw(text4);
+			window.draw(text5);
+			window.draw(text6);
+			window.draw(text7);
+			window.draw(text8);
+			window.draw(text9);
+
+			for (auto& part : rectangle) {
+				window.draw(part);
+			}
+
+			window.display();
 		}
 
-		window.clear();
-
-		window.draw(sprite);
-
-		window.draw(circle);
-
-		window.draw(text);
-		window.draw(text1);
-		window.draw(text2);
-		window.draw(text3);
-		window.draw(text4);
-		window.draw(text5);
-		window.draw(text6);
-		window.draw(text7);
-		window.draw(text8);
-		window.draw(text9);
-
-		window.draw(rectangle[0]);
-		window.draw(rectangle[1]);
-		window.draw(rectangle[2]);
-		window.draw(rectangle[3]);
-		window.draw(rectangle[4]);
-		window.draw(rectangle[5]);
-		window.draw(rectangle[6]);
-		window.draw(rectangle[7]);
-
-		window.display();
+		return 0;
 	}
-
-	return 0;
+	catch (const exception& ex) {
+		cerr << "Error: " << ex.what() << endl;
+		return EXIT_FAILURE;
+	}
 }
